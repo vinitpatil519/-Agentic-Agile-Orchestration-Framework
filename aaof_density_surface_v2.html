@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AAOF 3D Probability Density Surface</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#030610;color:#fff;font-family:'Share Tech Mono',monospace;overflow:hidden;width:100vw;height:100vh;}
+
+  #loader{
+    position:fixed;inset:0;background:#030610;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    z-index:200;transition:opacity 1s ease;
+  }
+  #loader.out{opacity:0;pointer-events:none;}
+
+  .ring{
+    width:90px;height:90px;
+    border:1px solid rgba(0,255,255,0.12);
+    border-top:2px solid #00ffff;
+    border-right:1px solid rgba(0,255,136,0.4);
+    border-radius:50%;
+    animation:spin 1.1s linear infinite;
+    box-shadow:0 0 24px rgba(0,255,255,0.25),inset 0 0 16px rgba(0,255,255,0.04);
+    margin-bottom:2rem;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .lt{font-family:'Orbitron',sans-serif;font-size:0.95rem;font-weight:700;color:#00ffff;
+    letter-spacing:0.25em;text-transform:uppercase;text-shadow:0 0 18px #00ffff77;margin-bottom:4px;}
+  .ls{font-size:0.6rem;color:rgba(0,255,255,0.35);letter-spacing:0.18em;margin-bottom:2rem;}
+
+  .bwrap{width:280px;height:2px;background:rgba(0,255,255,0.07);border-radius:2px;overflow:hidden;}
+  .bfill{height:100%;background:linear-gradient(90deg,#00ffff,#00ff88,#ffff00);
+    border-radius:2px;width:0%;transition:width .12s linear;box-shadow:0 0 10px #00ffff;}
+  .bstat{margin-top:10px;font-size:0.58rem;color:rgba(0,255,255,0.4);letter-spacing:0.12em;height:1.2em;}
+
+  #plot{width:100vw;height:100vh;}
+
+  /* corner brackets */
+  .c{position:fixed;width:36px;height:36px;pointer-events:none;z-index:30;}
+  .c::before,.c::after{content:'';position:absolute;background:#00ffff;box-shadow:0 0 6px rgba(0,255,255,0.6);}
+  .tl{top:14px;left:14px;} .tl::before{width:2px;height:28px;top:0;left:0;} .tl::after{width:28px;height:2px;top:0;left:0;}
+  .tr{top:14px;right:14px;} .tr::before{width:2px;height:28px;top:0;right:0;} .tr::after{width:28px;height:2px;top:0;right:0;}
+  .bl{bottom:14px;left:14px;} .bl::before{width:2px;height:28px;bottom:0;left:0;} .bl::after{width:28px;height:2px;bottom:0;left:0;}
+  .br{bottom:14px;right:14px;} .br::before{width:2px;height:28px;bottom:0;right:0;} .br::after{width:28px;height:2px;bottom:0;right:0;}
+
+  /* stats HUD */
+  #hud{position:fixed;top:68px;right:18px;pointer-events:none;z-index:30;display:flex;flex-direction:column;gap:4px;align-items:flex-end;}
+  .sr{display:flex;align-items:center;gap:10px;background:rgba(0,4,18,0.78);
+    border:1px solid rgba(0,255,255,0.09);border-right:2px solid rgba(0,255,255,0.4);
+    padding:4px 12px 4px 14px;border-radius:2px;backdrop-filter:blur(6px);}
+  .sl{font-size:0.5rem;color:rgba(0,255,255,0.42);letter-spacing:0.12em;text-transform:uppercase;}
+  .sv{font-size:0.7rem;color:#00ffff;font-weight:bold;text-shadow:0 0 8px #00ffff55;}
+
+  /* ticker */
+  #ticker{position:fixed;bottom:0;left:0;right:0;height:25px;
+    background:rgba(0,4,16,0.9);border-top:1px solid rgba(0,255,255,0.15);
+    overflow:hidden;display:flex;align-items:center;z-index:30;}
+  .tklbl{flex-shrink:0;padding:0 14px;font-size:0.56rem;color:#00ffff;letter-spacing:0.16em;
+    border-right:1px solid rgba(0,255,255,0.18);height:100%;display:flex;align-items:center;}
+  .tkscr{flex:1;overflow:hidden;white-space:nowrap;}
+  .tkinn{display:inline-block;animation:tkroll 55s linear infinite;font-size:0.56rem;color:rgba(0,255,255,0.5);letter-spacing:0.1em;}
+  @keyframes tkroll{0%{transform:translateX(100vw);}100%{transform:translateX(-100%);}}
+
+  /* scanlines */
+  body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1;
+    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,255,0.008) 3px,rgba(0,255,255,0.008) 4px);}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="ring"></div>
+  <div class="lt">AAOF Density Engine</div>
+  <div class="ls">PROBABILITY SURFACE RENDERER · v2</div>
+  <div class="bwrap"><div class="bfill" id="bf"></div></div>
+  <div class="bstat" id="bs">SEEDING STOCHASTIC MATRIX...</div>
+</div>
+
+<div id="plot"></div>
+
+<div class="c tl"></div><div class="c tr"></div><div class="c bl"></div><div class="c br"></div>
+
+<div id="hud">
+  <div class="sr"><span class="sl">SERIES</span><span class="sv">AAOF DENSITY SURFACE</span></div>
+  <div class="sr"><span class="sl">SIMULATIONS</span><span class="sv">10,000</span></div>
+  <div class="sr"><span class="sl">BASELINE</span><span class="sv">16.8 ± 2.1 DAYS</span></div>
+  <div class="sr"><span class="sl">TARGET μ</span><span class="sv">3.4 ± 0.3 DAYS</span></div>
+  <div class="sr"><span class="sl">HORIZON</span><span class="sv">30 SPRINT DAYS</span></div>
+  <div class="sr"><span class="sl">BINS</span><span class="sv">60 · KDE SMOOTHED</span></div>
+  <div class="sr"><span class="sl">SEED</span><span class="sv">42 · REPRODUCIBLE</span></div>
+</div>
+
+<div id="ticker">
+  <div class="tklbl">◈ DENSITY</div>
+  <div class="tkscr"><div class="tkinn">
+    AAOF PROBABILITY DENSITY SURFACE · CYCLE TIME TRANSFORMATION 16.8d → 3.4d · 10,000 GBM PATHS · GAUSSIAN KDE SMOOTHING · DOWNWARD DRIFT CALIBRATED FROM PAPER · BRIGHT RIDGE = HIGHEST PROBABILITY MASS · AGILE AI ORCHESTRATION FRAMEWORK · IEEE/SPRINGER RESEARCH OUTPUT ·
+  </div></div>
+</div>
+
+<script>
+// ── Seeded PRNG ────────────────────────────────────────────────────────────
+function mulberry32(seed){
+  return function(){
+    seed|=0;seed=seed+0x6D2B79F5|0;
+    let t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function makeRandn(seed){
+  const r=mulberry32(seed);let spare=null;
+  return function(){
+    if(spare!==null){const s=spare;spare=null;return s;}
+    let u,v,s;
+    do{u=r()*2-1;v=r()*2-1;s=u*u+v*v;}while(s>=1||s===0);
+    const m=Math.sqrt(-2*Math.log(s)/s);spare=v*m;return u*m;
+  };
+}
+
+// ── Loader ────────────────────────────────────────────────────────────────
+const bf=document.getElementById('bf'), bs=document.getElementById('bs');
+function ld(p,m){bf.style.width=p+'%';bs.textContent=m;}
+
+// ── Params ────────────────────────────────────────────────────────────────
+const N_SIM=10000, T=30, S0=16.8, SIGMA0=2.1, MU_T=3.4, CLIP=0.5, N_BINS=60;
+const mu_gbm=Math.log(MU_T/S0)/T;   // ≈ −0.0532
+const SIGMA_DRIFT=0.20;
+
+setTimeout(()=>{
+  ld(8,'SEEDING STOCHASTIC MATRIX...');
+  setTimeout(runSim, 80);
+},150);
+
+function runSim(){
+  ld(14,`SIMULATING ${N_SIM.toLocaleString()} GBM PATHS...`);
+  setTimeout(()=>{
+    const randn=makeRandn(42);
+
+    // ── Simulate: each path starts from N(16.8, 2.1) per paper ──────────
+    const daySnaps=Array.from({length:T+1},()=>new Float32Array(N_SIM));
+    for(let i=0;i<N_SIM;i++){
+      // Initial spread matches paper's manual baseline σ = 2.1
+      let s=Math.max(S0+SIGMA0*randn(), CLIP);
+      daySnaps[0][i]=s;
+      for(let t=1;t<=T;t++){
+        const tFrac=t/T;
+        // Volatility tapers as process converges
+        const sig=SIGMA_DRIFT*(1-tFrac*0.35);
+        s=s*Math.exp((mu_gbm-0.5*sig*sig)+sig*randn());
+        s=Math.max(s,CLIP);
+        daySnaps[t][i]=s;
+      }
+    }
+
+    ld(45,'COMPUTING GLOBAL BIN RANGE...');
+
+    // ── Global bin range across ALL days (P0.2 → P99.8) ─────────────────
+    const allVals=[];
+    for(let t=0;t<=T;t++) for(let i=0;i<N_SIM;i++) allVals.push(daySnaps[t][i]);
+    allVals.sort((a,b)=>a-b);
+    const binMin=allVals[Math.floor(0.002*allVals.length)];
+    const binMax=allVals[Math.floor(0.998*allVals.length)];
+    const binWidth=(binMax-binMin)/N_BINS;
+    const binCenters=Array.from({length:N_BINS},(_,k)=>binMin+(k+0.5)*binWidth);
+
+    ld(60,'BUILDING DENSITY HISTOGRAMS...');
+
+    // ── Z[binIdx][dayIdx] — CORRECT Plotly surface orientation ───────────
+    // Plotly: z[i][j] → y[i], x[j]
+    // We want: x=days(31), y=binCenters(60) → z must be [60][31]
+    const Z=Array.from({length:N_BINS},()=>new Float32Array(T+1));
+    for(let t=0;t<=T;t++){
+      const vals=daySnaps[t];
+      const counts=new Float32Array(N_BINS);
+      for(let i=0;i<N_SIM;i++){
+        const v=vals[i];
+        if(v<binMin||v>binMax) continue;
+        let bi=Math.floor((v-binMin)/binWidth);
+        if(bi>=N_BINS) bi=N_BINS-1;
+        counts[bi]++;
+      }
+      // Density normalisation
+      for(let b=0;b<N_BINS;b++) Z[b][t]=counts[b]/(N_SIM*binWidth);
+    }
+
+    ld(74,'APPLYING KDE GAUSSIAN SMOOTHING...');
+
+    // ── Gaussian smoothing along the bin axis per day ─────────────────────
+    function gaussSmooth1D(arr,sigma){
+      const k=Math.ceil(sigma*3),n=arr.length,out=new Float32Array(n);
+      const ker=[]; let ks=0;
+      for(let i=-k;i<=k;i++){const w=Math.exp(-i*i/(2*sigma*sigma));ker.push(w);ks+=w;}
+      for(let i=0;i<n;i++){
+        let s=0,ws=0;
+        for(let j=0;j<ker.length;j++){
+          const ii=i+(j-k);
+          if(ii>=0&&ii<n){s+=arr[ii]*ker[j];ws+=ker[j];}
+        }
+        out[i]=s/ws;
+      }
+      return out;
+    }
+
+    for(let t=0;t<=T;t++){
+      const col=Array.from({length:N_BINS},(_,b)=>Z[b][t]);
+      const sm=gaussSmooth1D(col,1.8);
+      for(let b=0;b<N_BINS;b++) Z[b][t]=sm[b];
+    }
+
+    ld(85,'COMPUTING RIDGE & ENVELOPES...');
+
+    // ── Ridge: max-density bin per day ────────────────────────────────────
+    const ridgeX=[],ridgeY=[],ridgeZ=[];
+    for(let t=0;t<=T;t++){
+      let maxD=-1,maxB=0;
+      for(let b=0;b<N_BINS;b++) if(Z[b][t]>maxD){maxD=Z[b][t];maxB=b;}
+      ridgeX.push(t);
+      ridgeY.push(binCenters[maxB]);
+      ridgeZ.push(maxD+0.003);
+    }
+
+    ld(92,'RENDERING 3D SURFACE...');
+    setTimeout(()=>buildPlot(Z,binCenters,binMin,binMax,ridgeX,ridgeY,ridgeZ),60);
+  },80);
+}
+
+function buildPlot(Z,binCenters,binMin,binMax,ridgeX,ridgeY,ridgeZ){
+  const days=Array.from({length:T+1},(_,i)=>i);
+
+  // Convert Z (Float32Array rows) to plain arrays for Plotly
+  const Zplot=Z.map(row=>Array.from(row));
+
+  const traces=[];
+
+  // ── 1. Main probability density surface ─────────────────────────────
+  traces.push({
+    type:'surface',
+    x: days,           // length 31 → x axis
+    y: binCenters,     // length 60 → y axis
+    z: Zplot,          // 60 × 31  → z[yIdx][xIdx] ✓
+    colorscale:[
+      [0.00,'#030610'],
+      [0.12,'#001830'],
+      [0.25,'#003060'],
+      [0.45,'#005580'],
+      [0.62,'#0090B0'],
+      [0.78,'#00C8D0'],
+      [0.90,'#00FF88'],
+      [1.00,'#FFFF00'],
+    ],
+    opacity:0.94,
+    showscale:true,
+    colorbar:{
+      title:{text:'Prob. Density',font:{color:'rgba(0,255,255,0.7)',size:9,family:"'Share Tech Mono',monospace"}},
+      tickfont:{color:'rgba(255,255,255,0.6)',size:8},
+      outlinecolor:'rgba(0,255,255,0.15)',outlinewidth:1,
+      bgcolor:'rgba(0,0,0,0)',
+      len:0.55,thickness:12,x:1.01,
+    },
+    lighting:{ambient:0.65,diffuse:0.85,specular:0.5,roughness:0.35,fresnel:0.6},
+    lightposition:{x:2000,y:-1000,z:3000},
+    contours:{
+      z:{
+        show:true,
+        usecolormap:true,
+        project:{z:true},
+        highlightcolor:'rgba(0,255,255,0.5)',
+        width:1,
+      },
+    },
+    hovertemplate:'<b>Day %{x}</b><br>Cycle Time: %{y:.2f}d<br>Density: %{z:.4f}<extra></extra>',
+    name:'Probability Density',
+    showlegend:false,
+  });
+
+  // ── 2. Translucent floor plane ───────────────────────────────────────
+  traces.push({
+    type:'surface',
+    x:[0,T],
+    y:[binMin,binMax],
+    z:[[0,0],[0,0]],
+    colorscale:[[0,'rgba(0,60,100,0.06)'],[1,'rgba(0,60,100,0.06)']],
+    showscale:false,opacity:0.5,
+    hoverinfo:'none',showlegend:false,
+    lighting:{ambient:1},
+    contours:{x:{show:false},y:{show:false},z:{show:false}},
+  });
+
+  // ── 3. Ridge glow layers ─────────────────────────────────────────────
+  [{w:12,c:'rgba(0,255,255,0.05)'},{w:7,c:'rgba(0,255,255,0.13)'},{w:4,c:'rgba(0,255,255,0.35)'}]
+  .forEach(g=>{
+    traces.push({
+      type:'scatter3d',mode:'lines',
+      x:ridgeX,y:ridgeY,z:ridgeZ,
+      line:{color:g.c,width:g.w},
+      hoverinfo:'none',showlegend:false,
+    });
+  });
+
+  // ── 4. Core ridge line ───────────────────────────────────────────────
+  traces.push({
+    type:'scatter3d',mode:'lines',
+    x:ridgeX,y:ridgeY,z:ridgeZ,
+    name:'Peak Density Ridge',
+    line:{color:'#00ffff',width:2},
+    hovertemplate:'Day %{x}<br>Peak: %{y:.2f}d<br>Max Density: %{z:.4f}<extra></extra>',
+    showlegend:true,
+  });
+
+  // ── 5. Day-0 and Day-30 peak markers ─────────────────────────────────
+  traces.push({
+    type:'scatter3d',mode:'markers+text',
+    x:[ridgeX[0], ridgeX[T]],
+    y:[ridgeY[0], ridgeY[T]],
+    z:[ridgeZ[0]+0.008, ridgeZ[T]+0.008],
+    marker:{
+      size:[7,7],
+      color:['#ff8844','#ffff00'],
+      symbol:['diamond','diamond'],
+      line:{color:'#00ffff',width:1},
+    },
+    text:[`BASELINE<br>${ridgeY[0].toFixed(1)}d`, `AAOF TARGET<br>${ridgeY[T].toFixed(1)}d`],
+    textposition:['top center','top center'],
+    textfont:{color:'#ffffff',size:8,family:"'Share Tech Mono',monospace"},
+    hovertemplate:'<b>%{text}</b><extra></extra>',
+    name:'Key Points',
+    showlegend:true,
+  });
+
+  // ── Layout ────────────────────────────────────────────────────────────
+  const layout={
+    paper_bgcolor:'#030610',
+    plot_bgcolor:'#030610',
+    font:{family:"'Share Tech Mono',monospace",color:'#fff'},
+    title:{
+      text:'AAOF Enterprise Transformation — Probability Density Surface · 10,000 Simulations',
+      font:{family:"'Orbitron',sans-serif",size:13,color:'#ffffff'},
+      x:0.5,xanchor:'center',y:0.975,
+    },
+    margin:{l:0,r:90,t:58,b:0},
+    scene:{
+      bgcolor:'#030610',
+      xaxis:{
+        title:{text:'Sprint Day',font:{color:'#00ffff',size:10}},
+        color:'#00ffff',
+        gridcolor:'rgba(0,255,255,0.10)',
+        zerolinecolor:'rgba(0,255,255,0.25)',
+        tickfont:{color:'rgba(255,255,255,0.7)',size:9},
+        linecolor:'rgba(0,255,255,0.4)',
+        range:[0,30],
+      },
+      yaxis:{
+        title:{text:'Cycle Time (Days)',font:{color:'#00ffff',size:10}},
+        color:'#00ffff',
+        gridcolor:'rgba(0,255,255,0.08)',
+        zerolinecolor:'rgba(0,255,255,0.2)',
+        tickfont:{color:'rgba(255,255,255,0.7)',size:9},
+        linecolor:'rgba(0,255,255,0.4)',
+        // reversed so high cycle times are at the back
+        autorange:'reversed',
+      },
+      zaxis:{
+        title:{text:'Probability Density',font:{color:'#00ffff',size:10}},
+        color:'#00ffff',
+        gridcolor:'rgba(0,255,255,0.10)',
+        zerolinecolor:'rgba(0,255,255,0.2)',
+        tickfont:{color:'rgba(255,255,255,0.7)',size:9},
+        linecolor:'rgba(0,255,255,0.4)',
+      },
+      camera:{
+        eye:{x:1.8,y:-1.5,z:1.2},
+        up:{x:0,y:0,z:1},
+        projection:{type:'perspective'},
+      },
+      aspectmode:'manual',
+      aspectratio:{x:1.5,y:1.1,z:0.7},
+    },
+    legend:{
+      x:0.01,y:0.93,
+      bgcolor:'rgba(0,4,18,0.72)',
+      bordercolor:'rgba(0,255,255,0.18)',borderwidth:1,
+      font:{color:'rgba(255,255,255,0.8)',size:9,family:"'Share Tech Mono',monospace"},
+    },
+    annotations:[
+      {
+        xref:'paper',yref:'paper',x:0.5,y:0.935,
+        text:'Cycle Time Distribution Over 30 Days · 16.8d → 3.4d',
+        showarrow:false,
+        font:{size:10,color:'rgba(0,255,255,0.55)',family:"'Share Tech Mono',monospace"},
+        xanchor:'center',
+      },
+      {
+        xref:'paper',yref:'paper',x:0.99,y:0.02,
+        text:'Bright ridge = highest probability mass · Surface widens with entropy over time',
+        showarrow:false,
+        font:{size:8.5,color:'rgba(255,255,255,0.3)',family:"'Share Tech Mono',monospace"},
+        xanchor:'right',
+      },
+    ],
+  };
+
+  const config={displayModeBar:true,displaylogo:false,responsive:true,
+    modeBarButtonsToRemove:['sendDataToCloud']};
+
+  Plotly.newPlot('plot',traces,layout,config).then(()=>{
+    ld(100,'SURFACE COMPLETE ✓');
+    setTimeout(()=>{
+      document.getElementById('loader').classList.add('out');
+      setTimeout(()=>{document.getElementById('loader').style.display='none';},1100);
+    },300);
+  });
+}
+</script>
+</body>
+</html>
